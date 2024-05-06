@@ -1,56 +1,55 @@
-from flask import Flask, jsonify
+from flask import Flask, request, jsonify
 import pickle
-import keras
-import sklearn
+import pandas as pd
+import numpy as np
+import gensim
 import os
 
 app = Flask(__name__)
 
-@app.route("/api/predict", methods=["GET"])
+@app.route("/api/predict", methods=["POST"])
 def runAll():
-    with open('tokenizer.pickle', 'rb') as handle:
-        tokenizer = pickle.load(handle)
-    print("LOG: load tokenizer success")
+    request_data = request.get_json()
+    prompt = request_data.get('prompt')
+    
+    try:
+        modelvw = gensim.models.Word2Vec.load("word2vec.model")
+        model = pickle.load(open('finalized_model.pkl', 'rb'))
+        def vectorize_name(name):
+            vectors = [modelvw.wv[word] for word in name]
+            if vectors:
+                return np.mean(vectors, axis=0)
+            else:
+                return np.zeros(modelvw.vector_size)  # Return a zero vector if the name is empty
+            
+        # random forest awal2
+        def preprocess_and_predict(new_data):
+            # Preprocess the data
+            new_data = new_data.lower().replace(r'[^a-z\s]', '').split()
+            new_vector = vectorize_name(new_data)
+
+            # Reshape the vector
+            new_vector = new_vector.reshape(1, -1)
+
+            # Predict the output
+            prediction = model.predict(new_vector)
+
+            # Map the prediction back to the original value
+            mapping = {
+                1: '1945 - 1978',
+                2: '1979 - 1993',
+                3: '1994 - 2024'
+            }
+            prediction = pd.Series(prediction).map(mapping)
+
+            return prediction
+        # Test the function with new data
+        new_data = "soekarno"
+        result = preprocess_and_predict(prompt)
         
-    # Now suppose you have some new input text
-    input_text = ["budi pranowo"]
-    print("LOG: name load success")
-
-    # Preprocess the input text
-    input_text = [s.lower().replace(r'[^a-z\s]', '').split() for s in input_text]
-    print("LOG: preprocessing success")
-    
-    # Load the maxlen value
-    with open('maxlen.pickle', 'rb') as handle:
-        maxlen = pickle.load(handle)
-    print("LOG: maxlen success")
-        
-    # Pad the sequences of new data
-    new_sequences = tokenizer.texts_to_sequences(input_text)
-    new_X = keras.preprocessing.sequence.pad_sequences(new_sequences, maxlen=maxlen)
-    print(new_X)
-    print("LOG: tokenization success")
-
-    # Load the model
-    model = keras.models.load_model('GRU_model.h5')
-    print("LOG: model load success")
-
-    # Load the LabelEncoder
-    with open('label_encoder.pickle', 'rb') as handle:
-        le = pickle.load(handle)
-    print("LOG: label encoder load success")
-
-    # Predict with the model
-    predictions = model.predict(new_X)
-    print("LOG: prediction success")
-
-    # Convert the predictions back to original labels
-    original_labels = le.inverse_transform(predictions.argmax(axis=-1))
-    print("LOG: conversion success")
-    
-    print(original_labels)
-    
-    return jsonify({"generation": original_labels[0]})
+        return jsonify(result[0])
+    except ValueError:
+        return jsonify({'error': 'Invalid number provided'}), 400
 
 @app.route("/api/healthchecker", methods=["GET"])
 def healthchecker():
