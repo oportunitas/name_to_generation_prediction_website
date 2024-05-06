@@ -1,5 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+    output: "export",
+    basePath: "name_to_generation_prediction_website",
+    images: {
+        unoptimized: true,
+    },
     rewrites: async () => {
         return [{
             source: '/api/:path*',
